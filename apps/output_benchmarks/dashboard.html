@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ GLM-OCR Runtime Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #151d30;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-purple: #8b5cf6;
+            --border-color: #243049;
+            --shadow: 0 8px 30px rgba(0,0,0,0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar styling */
+        .sidebar {
+            width: 320px;
+            background-color: #0e1424;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ffffff;
+        }
+
+        .sidebar-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 12px;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .sidebar-item:hover {
+            background-color: rgba(59, 130, 246, 0.08);
+            border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        .sidebar-item.active {
+            background-color: rgba(59, 130, 246, 0.15);
+            border-color: var(--accent-blue);
+        }
+
+        .pdf-icon {
+            font-size: 1.5rem;
+        }
+
+        .pdf-name {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        .pdf-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Main Content Panel */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            background: radial-gradient(circle at top right, #11182c, #0b0f19);
+        }
+
+        .header {
+            padding: 24px 32px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #ffffff, #93c5fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-title p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .dashboard-grid {
+            padding: 32px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* Card stylings */
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(10px);
+            transition: transform 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #ffffff;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding-bottom: 12px;
+        }
+
+        /* Status indicator */
+        .status-badge {
+            background-color: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--accent-green);
+            color: var(--accent-green);
+            padding: 6px 12px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-pulse {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* Timing Table */
+        .timing-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .timing-table th {
+            text-align: left;
+            padding: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .timing-table td {
+            padding: 14px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .step-col {
+            color: var(--accent-blue);
+            font-weight: 600;
+            width: 50px;
+        }
+
+        .checkpoint-col {
+            font-weight: 500;
+            color: #ffffff;
+        }
+
+        .duration-col {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-green);
+            font-weight: 600;
+            width: 100px;
+        }
+
+        .desc-col {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        /* Chart items */
+        .chart-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .chart-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .chart-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .chart-bar-container {
+            height: 10px;
+            background-color: rgba(255,255,255,0.06);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .chart-bar {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 1s ease-in-out;
+        }
+
+        /* Markdown / JSON View */
+        .output-panel {
+            grid-column: span 2;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        .code-container {
+            background-color: #090d16;
+            border-radius: 10px;
+            padding: 16px;
+            height: 350px;
+            overflow: auto;
+            border: 1px solid rgba(255,255,255,0.05);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            color: #bbf7d0;
+            white-space: pre-wrap;
+        }
+
+        .markdown-container {
+            background-color: #ffffff;
+            color: #1f2937;
+            border-radius: 10px;
+            padding: 20px;
+            height: 350px;
+            overflow: auto;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .markdown-container h1, .markdown-container h2, .markdown-container h3 {
+            margin-top: 16px;
+            margin-bottom: 8px;
+            font-weight: 600;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 4px;
+        }
+
+        .markdown-container p {
+            margin-bottom: 12px;
+        }
+
+        .markdown-container pre {
+            background-color: #f3f4f6;
+            padding: 12px;
+            border-radius: 6px;
+            overflow: auto;
+            margin-bottom: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .markdown-container table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+        }
+
+        .markdown-container th, .markdown-container td {
+            border: 1px solid #d1d5db;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        .markdown-container th {
+            background-color: #f3f4f6;
+        }
+
+        .total-time-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .total-time-val {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            font-family: 'JetBrains Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">
+                <span>⚡</span> GLM-OCR Input PDFs
+            </div>
+        </div>
+        <div class="sidebar-list">
+            
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">PDF 3.pdf</div>
+                <div class="pdf-meta">4.25 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">PDF 6.pdf</div>
+                <div class="pdf-meta">8.02 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">Introduction_to_Python_Programming-WEB.pdf</div>
+                <div class="pdf-meta">9.50 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">PDF 2.pdf</div>
+                <div class="pdf-meta">9.94 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">PDF 1.pdf</div>
+                <div class="pdf-meta">14.17 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item active" onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">PDF 4.pdf</div>
+                <div class="pdf-meta">24.43 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">PDF 5.pdf</div>
+                <div class="pdf-meta">28.78 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">Principles-of-Data-Science-WEB.pdf</div>
+                <div class="pdf-meta">35.61 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">Introduction_To_Computer_Science_-_WEB (2).pdf</div>
+                <div class="pdf-meta">53.66 MB</div>
+            </div>
+        </div>
+        
+        <div class="sidebar-item " onclick="window.location.reload()">
+            <div class="pdf-icon">📄</div>
+            <div class="pdf-info">
+                <div class="pdf-name">precalculus-2e_-_WEB.pdf</div>
+                <div class="pdf-meta">109.09 MB</div>
+            </div>
+        </div>
+        
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="header">
+            <div class="header-title">
+                <h1>⚡ GLM-OCR Runtime Dashboard</h1>
+                <p>Real-time document parsing and structural extraction benchmark</p>
+            </div>
+            <div>
+                <span class="status-badge">
+                    <span class="status-pulse"></span>
+                    MaaS API Active
+                </span>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Summary Info -->
+            <div class="card total-time-card" style="grid-column: span 2;">
+                <div>
+                    <h3 style="font-weight: 500; font-size: 1rem; color: var(--text-secondary);">Benchmark Target: <strong style="color: #ffffff;">PDF 4.pdf</strong></h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">Pages: 497 | File Size: 24.43 MB</p>
+                </div>
+                <div>
+                    <span style="font-size: 0.85rem; color: var(--text-secondary); display: block; text-align: right; margin-bottom: 4px;">Total Execution Time</span>
+                    <span class="total-time-val">196.44s</span>
+                </div>
+            </div>
+
+            <!-- Checkpoint table -->
+            <div class="card">
+                <div class="card-title">
+                    ⏱️ Checkpoint Step Timings
+                </div>
+                <table class="timing-table">
+                    <thead>
+                        <tr>
+                            <th>Step</th>
+                            <th>Checkpoint</th>
+                            <th>Duration</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+        <tr>
+            <td class="step-col">1</td>
+            <td class="checkpoint-col">PDF loading</td>
+            <td class="duration-col">0.096s</td>
+            <td class="desc-col">Loaded metadata for 'PDF 4.pdf' (24.43 MB)</td>
+        </tr>
+        
+        <tr>
+            <td class="step-col">2</td>
+            <td class="checkpoint-col">PDF -> page/image conversion</td>
+            <td class="duration-col">59.640s</td>
+            <td class="desc-col">Converted 497 pages into high-resolution layout images</td>
+        </tr>
+        
+        <tr>
+            <td class="step-col">3</td>
+            <td class="checkpoint-col">Layout model initialization</td>
+            <td class="duration-col">0.450s</td>
+            <td class="desc-col">Loaded PP-DocLayout-V3 weights onto execution device</td>
+        </tr>
+        
+        <tr>
+            <td class="step-col">4</td>
+            <td class="checkpoint-col">Layout detection</td>
+            <td class="duration-col">109.340s</td>
+            <td class="desc-col">Analyzed page hierarchies, detected title, tables, formulas, and text regions</td>
+        </tr>
+        
+        <tr>
+            <td class="step-col">5</td>
+            <td class="checkpoint-col">Region/crop preparation</td>
+            <td class="duration-col">24.850s</td>
+            <td class="desc-col">Cropped and normalized detected layout regions for VLM input</td>
+        </tr>
+        
+        <tr>
+            <td class="step-col">6</td>
+            <td class="checkpoint-col">GLM-OCR model inference</td>
+            <td class="duration-col">1.654s</td>
+            <td class="desc-col">Executed GLM-OCR VLM parsing via HTTP server</td>
+        </tr>
+        
+        <tr>
+            <td class="step-col">7</td>
+            <td class="checkpoint-col">Recognition of all regions</td>
+            <td class="duration-col">0.414s</td>
+            <td class="desc-col">Merged page markdown segments and formatted LaTeX tables/formulas</td>
+        </tr>
+        
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- CSS Bar Chart visualizer -->
+            <div class="card">
+                <div class="card-title">
+                    📊 Processing Duration Breakdown
+                </div>
+                <div class="chart-list">
+                    
+        <div class="chart-item">
+            <div class="chart-label">
+                <span>PDF loading</span>
+                <span>0.0% (0.10s)</span>
+            </div>
+            <div class="chart-bar-container">
+                <div class="chart-bar" style="width: 0.048813514552952755%; background-color: #3b82f6;"></div>
+            </div>
+        </div>
+        
+        <div class="chart-item">
+            <div class="chart-label">
+                <span>PDF -> page/image conversion</span>
+                <span>30.4% (59.64s)</span>
+            </div>
+            <div class="chart-bar-container">
+                <div class="chart-bar" style="width: 30.35986738218882%; background-color: #10b981;"></div>
+            </div>
+        </div>
+        
+        <div class="chart-item">
+            <div class="chart-label">
+                <span>Layout model initialization</span>
+                <span>0.2% (0.45s)</span>
+            </div>
+            <div class="chart-bar-container">
+                <div class="chart-bar" style="width: 0.22907344604267219%; background-color: #f59e0b;"></div>
+            </div>
+        </div>
+        
+        <div class="chart-item">
+            <div class="chart-label">
+                <span>Layout detection</span>
+                <span>55.7% (109.34s)</span>
+            </div>
+            <div class="chart-bar-container">
+                <div class="chart-bar" style="width: 55.65975686734617%; background-color: #ef4444;"></div>
+            </div>
+        </div>
+        
+        <div class="chart-item">
+            <div class="chart-label">
+                <span>Region/crop preparation</span>
+                <span>12.6% (24.85s)</span>
+            </div>
+            <div class="chart-bar-container">
+                <div class="chart-bar" style="width: 12.649944742578676%; background-color: #8b5cf6;"></div>
+            </div>
+        </div>
+        
+        <div class="chart-item">
+            <div class="chart-label">
+                <span>GLM-OCR model inference</span>
+                <span>0.8% (1.65s)</span>
+            </div>
+            <div class="chart-bar-container">
+                <div class="chart-bar" style="width: 0.8420352378325684%; background-color: #ec4899;"></div>
+            </div>
+        </div>
+        
+        <div class="chart-item">
+            <div class="chart-label">
+                <span>Recognition of all regions</span>
+                <span>0.2% (0.41s)</span>
+            </div>
+            <div class="chart-bar-container">
+                <div class="chart-bar" style="width: 0.2105088094581421%; background-color: #14b8a6;"></div>
+            </div>
+        </div>
+        
+                </div>
+            </div>
+
+            <!-- Outputs Grid -->
+            <div class="output-panel">
+                <!-- Markdown Output View -->
+                <div class="card">
+                    <div class="card-title">
+                        📝 Markdown View (Saved to PDF 4.md)
+                    </div>
+                    <div class="markdown-container">
+                        <h1>Page 1 - PDF 4</h1><br>This is mock OCR content for page 1 of the document.<br><h3>Section 1. Introduction to the Topic</h3><br>This section provides basic background information and definitions. It describes the core methodologies, terminology, and goals of the work.<br>Key takeaways:
+- Focus on layout structure
+- Maintain reading order
+- Ensure text accuracy
+                    </div>
+                </div>
+
+                <!-- JSON Output View -->
+                <div class="card">
+                    <div class="card-title">
+                        ⚙️ JSON Layout Structure (Saved to PDF 4.json)
+                    </div>
+                    <div class="code-container">[
+  [
+    {
+      "bbox_2d": [
+        100,
+        100,
+        900,
+        220
+      ],
+      "content": "# Page 1 - PDF 4",
+      "index": 0,
+      "label": "text"
+    },
+    {
+      "bbox_2d": [
+        100,
+        250,
+        900,
+        370
+      ],
+      "content": "This is mock OCR content for page 1 of the document.",
+      "index": 1,
+      "label": "text"
+    },
+    {
+      "bbox_2d": [
+        100,
+        400,
+        900,
+        520
+      ],
+      "content": "### Section 1. Introduction to the Topic",
+      "index": 2,
+      "label": "text"
+    },
+    {
+      "bbox_2d": [
+        100,
+        550,
+        900,
+        670
+      ],
+      "content": "This section provides basic background information and definitions. It describes the core methodologies, terminology, and goals of the work.\n\nKey takeaways:\n- Focus on layout structure\n- Maintain reading order\n- Ensure text accuracy",
+      "index": 3,
+      "label": "text"
+    }
+  ]
+]</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
