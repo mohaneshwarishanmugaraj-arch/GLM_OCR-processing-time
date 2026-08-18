@@ -1,0 +1,4 @@
+pipeline:
+  maas:
+    enabled: true
+    api_key: 6171f4b0832a4c788f3a7a56674d545f.dVbM8uJ0JFsWBCri

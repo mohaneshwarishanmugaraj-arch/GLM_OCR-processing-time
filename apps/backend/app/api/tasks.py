@@ -21,6 +21,130 @@ from app.utils.config import settings
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
+@router.get("/test_files", response_model=ApiResponse[List[str]])
+async def list_test_files():
+    """列出测试文件"""
+    try:
+        input_dir = Path(__file__).resolve().parent.parent.parent.parent / "input"
+        files = []
+        if input_dir.exists():
+            for f in input_dir.iterdir():
+                if f.is_file() and f.suffix.lower() in [".pdf", ".jpg", ".jpeg", ".png"]:
+                    files.append(f.name)
+        return ApiResponse(
+            success=True,
+            data=sorted(files),
+            message="Test files retrieved successfully",
+        )
+    except Exception as e:
+        logger.error(f"Failed to list test files: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list test files: {str(e)}",
+        )
+
+@router.get("/test_file_content/{filename}")
+async def get_test_file_content(filename: str):
+    """获取测试文件的二进制内容"""
+    try:
+        input_dir = Path(__file__).resolve().parent.parent.parent.parent / "input"
+        file_path = input_dir / filename
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+
+        mime_type, _ = guess_type(file_path.name)
+        if mime_type is None:
+            mime_type = "application/octet-stream"
+
+        with open(file_path, "rb") as f:
+            content = f.read()
+
+        return Response(
+            content=content,
+            media_type=mime_type,
+            headers={
+                "Content-Disposition": f"inline; filename=\"{file_path.name}\""
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to read test file: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read test file: {str(e)}",
+        )
+
+@router.post(
+    "/submit_test_file",
+    response_model=ApiResponse[TaskData],
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_test_file(
+    filename: str = Form(..., description="文件名"),
+    processing_mode: str = Form("pipeline"),
+    priority: int = Form(2, description="1=低,2=正常,3=高,4=紧急"),
+    custom_url: str = Form(None, description=""),
+    output_format: str = Form("markdown"),
+):
+    """从input目录提交测试任务"""
+    try:
+        input_dir = Path(__file__).resolve().parent.parent.parent.parent / "input"
+        file_path = input_dir / filename
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found in input directory")
+
+        document_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())
+
+        parsed_ocr_config = None
+        if custom_url is not None:
+            parsed_ocr_config = {"custom_url": custom_url}
+
+        save_dir = Path(settings.OUTPUT_DIR) / task_id
+        save_dir.mkdir(parents=True, exist_ok=True)
+        saved_path = save_dir / filename
+
+        import shutil
+        shutil.copy2(file_path, saved_path)
+
+        file_size = saved_path.stat().st_size
+        file_type = saved_path.suffix.lstrip(".").lower()
+
+        task_manager = get_task_manager()
+        await task_manager.submit_task(
+            task_id=task_id,
+            document_id=document_id,
+            original_filename=filename,
+            file_type=file_type,
+            file_size=file_size,
+            file_path=str(saved_path),
+            processing_mode=processing_mode,
+            priority=priority,
+            ocr_config=parsed_ocr_config,
+            output_format=output_format,
+        )
+
+        return ApiResponse(
+            success=True,
+            data={
+                "task_id": task_id,
+                "document_id": document_id,
+                "status": "pending",
+                "processing_mode": processing_mode,
+                "priority": priority,
+                "created_at": datetime.now(UTC).isoformat(),
+            },
+            message="Test file submitted successfully",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to submit test task: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit test task: {str(e)}",
+        )
 @router.post(
     "/upload",
     response_model=ApiResponse[TaskData],
@@ -136,8 +260,8 @@ async def read_file(path: str):
         with open(file_path, "rb") as f:
             content = f.read()
 
-        # 如果是图片文件，直接返回二进制数据
-        if mime_type.startswith("image/"):
+        # 如果是图片或PDF文件，直接返回二进制数据
+        if mime_type.startswith("image/") or mime_type == "application/pdf":
             return Response(
                 content=content,
                 media_type=mime_type,

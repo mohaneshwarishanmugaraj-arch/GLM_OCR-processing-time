@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 
 # Paths
-ROOT_DIR = Path(r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR")
+ROOT_DIR = Path(__file__).parent.resolve()
 BACKEND_DIR = ROOT_DIR / "apps" / "backend"
 FRONTEND_DIR = ROOT_DIR / "apps" / "frontend"
 VENV_PYTHON = BACKEND_DIR / ".venv" / "Scripts" / "python.exe"

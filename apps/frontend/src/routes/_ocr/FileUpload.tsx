@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Upload, Loader2 } from 'lucide-react'
 import { cn } from '@/libs/utils'
-import { uploadTask, getTaskStatus, type TaskStatus, type TaskStatusData } from '@/libs/api'
+import { uploadTask, getTaskStatus, getTestFiles, submitTestFile, getTestFileBlob, type TaskStatus, type TaskStatusData } from '@/libs/api'
 import { toast } from 'sonner'
 
 
@@ -80,6 +80,47 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 	const [isLoading, setIsLoading] = useState(false)
+	const [testFiles, setTestFiles] = useState<string[]>([])
+	const [searchQuery, setSearchQuery] = useState('')
+
+	useEffect(() => {
+		getTestFiles().then(setTestFiles).catch(console.error)
+	}, [])
+
+	const filteredTestFiles = testFiles.filter(f => f.toLowerCase().includes(searchQuery.toLowerCase()))
+
+	const handleTestFileSelect = async (filename: string) => {
+		if (isLoading) return
+		setIsLoading(true)
+		try {
+			// 先获取文件的实际内容，以便能够预览
+			const fileBlob = await getTestFileBlob(filename)
+			const fileType = filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'
+			const realFile = new File([fileBlob], filename, { type: fileType })
+
+			const uploadedFile: UploadedFile = {
+				id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+				name: filename,
+				size: fileBlob.size,
+				type: fileType,
+				file: realFile,
+				uploadTime: new Date(),
+				error: null
+			}
+			setSelectedFile(uploadedFile)
+
+			const response = await submitTestFile(filename)
+			const taskId = String(response.task_id)
+			onFileUploaded(uploadedFile)
+			if (taskId) {
+				startPolling(uploadedFile.id, taskId)
+			}
+		} catch (error: any) {
+			toast.error(error.message || 'Failed to submit test file')
+			setSelectedFile(null)
+			setIsLoading(false)
+		}
+	}
 
 
 	const handleDragOver = (e: React.DragEvent) => {
@@ -286,6 +327,35 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 					disabled={isLoading}
 					onChange={handleFileInput}
 				/>
+			</div>
+
+			{/* Test Files Search */}
+			<div className='p-4 border-t border-border flex-1 flex flex-col min-h-0'>
+				<h2 className='text-sm font-semibold mb-2'>Test Files</h2>
+				<input
+					type="text"
+					placeholder="Search input PDFs..."
+					value={searchQuery}
+					onChange={e => setSearchQuery(e.target.value)}
+					className="w-full px-3 py-2 mb-3 border border-border rounded-md text-sm bg-transparent"
+					disabled={isLoading}
+				/>
+				<div className="flex-1 overflow-y-auto space-y-1 pr-2">
+					{filteredTestFiles.map(filename => (
+						<button
+							key={filename}
+							onClick={() => handleTestFileSelect(filename)}
+							disabled={isLoading}
+							className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 truncate transition-colors disabled:opacity-50"
+							title={filename}
+						>
+							{filename}
+						</button>
+					))}
+					{filteredTestFiles.length === 0 && (
+						<p className="text-sm text-gray-500 text-center py-4">No files found</p>
+					)}
+				</div>
 			</div>
 		</div>
 	)

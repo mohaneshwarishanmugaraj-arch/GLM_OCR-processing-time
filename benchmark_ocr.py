@@ -16,12 +16,103 @@ INPUT_DIR = Path(r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR\apps\input")
 OUTPUT_DIR = Path(r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR\apps\output_benchmarks")
 SDK_SERVER_URL = "http://localhost:5002/glmocr/parse"
 
+BENCHMARK_CHECKPOINTS = [
+    "PDF loading",
+    "PDF -> page/image conversion",
+    "Layout model initialization",
+    "Layout detection",
+    "Region/crop preparation",
+    "GLM-OCR model inference",
+    "Recognition of all regions",
+]
+
+
 def scan_pdfs():
     """Scan INPUT_DIR for PDF files."""
     if not INPUT_DIR.exists():
         print(f"Error: Input directory {INPUT_DIR} does not exist.")
         return []
     return sorted(list(INPUT_DIR.glob("*.pdf")), key=lambda p: p.stat().st_size)
+
+
+def check_checkpoint_coverage(checkpoints):
+    """Return ordered checkpoint entries and any missing benchmark stages."""
+    checkpoint_map = {entry["checkpoint"]: entry for entry in checkpoints}
+    ordered = []
+    missing = []
+    for checkpoint_name in BENCHMARK_CHECKPOINTS:
+        checkpoint = checkpoint_map.get(checkpoint_name)
+        if checkpoint is None:
+            missing.append(checkpoint_name)
+            continue
+        ordered.append(checkpoint)
+    return ordered, missing
+
+
+def export_word_report(benchmark_data, output_path: Path):
+    """Export the benchmark timing results to a Microsoft Word document."""
+    try:
+        from docx import Document
+    except ImportError:
+        print("python-docx is not installed; Word export skipped.")
+        return None
+
+    ordered_checkpoints, missing = check_checkpoint_coverage(benchmark_data.get("checkpoints", []))
+    report_path = Path(output_path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+
+    doc = Document()
+    title = doc.add_paragraph()
+    title_run = title.add_run("GLM-OCR")
+    title_run.bold = True
+    title_run.font.size = 22
+    title_run.font.color.rgb = None
+    subtitle = doc.add_paragraph()
+    subtitle_run = subtitle.add_run("Performance Benchmark Report")
+    subtitle_run.bold = True
+    subtitle_run.font.size = 26
+
+    doc.add_paragraph(f"Target file: {benchmark_data.get('filename', 'Unknown file')}")
+    doc.add_paragraph(f"Pages: {benchmark_data.get('pages', 0)}")
+    doc.add_paragraph(f"File size: {benchmark_data.get('size_mb', 0):.2f} MB")
+    doc.add_paragraph(f"Total execution time: {benchmark_data.get('total_time', 0):.3f} seconds")
+
+    doc.add_heading("Processing Duration Breakdown", level=1)
+    table = doc.add_table(rows=1, cols=4)
+    table.style = "Table Grid"
+    table.rows[0].cells[0].text = "Step"
+    table.rows[0].cells[1].text = "Checkpoint"
+    table.rows[0].cells[2].text = "Duration (s)"
+    table.rows[0].cells[3].text = "Details"
+
+    for idx, checkpoint in enumerate(ordered_checkpoints, start=1):
+        row_cells = table.add_row().cells
+        row_cells[0].text = str(idx)
+        row_cells[1].text = checkpoint.get("checkpoint", "Unknown")
+        row_cells[2].text = f"{checkpoint.get('duration', 0):.3f}"
+        row_cells[3].text = checkpoint.get("description", "")
+
+    doc.add_heading("Checkpoint Coverage", level=1)
+    for checkpoint_name in BENCHMARK_CHECKPOINTS:
+        checkbox = "[x]" if checkpoint_name not in missing else "[ ]"
+        doc.add_paragraph(f"{checkbox} {checkpoint_name}")
+
+    if missing:
+        doc.add_paragraph("Missing checkpoints from the current run: " + ", ".join(missing))
+
+    doc.add_heading("Benchmark Performance Summary", level=1)
+    doc.add_paragraph(
+        "This benchmark captures the end-to-end processing time for the OCR pipeline, "
+        "including PDF ingestion, layout analysis, region preparation, and model inference."
+    )
+    doc.add_paragraph(
+        "The benchmark is designed to measure the time spent in each pipeline stage so performance "
+        "bottlenecks can be identified and optimized."
+    )
+
+    doc.save(report_path)
+    return report_path
+
 
 def parse_pdf_with_benchmarks(pdf_path: Path):
     """Parse a single PDF, measuring checkpoints and saving JSON/MD results."""
@@ -762,13 +853,18 @@ def main():
     if benchmark_data:
         # Generate Dashboard HTML
         dashboard_html = generate_dashboard_html(benchmark_data, pdfs)
-        
+
         dashboard_file = OUTPUT_DIR / "dashboard.html"
         with open(dashboard_file, "w", encoding="utf-8") as f:
             f.write(dashboard_html)
-            
+
+        word_report_file = OUTPUT_DIR / f"{target_pdf.stem}_performance_benchmark.docx"
+        exported_report = export_word_report(benchmark_data, word_report_file)
+
         print(f"\n==============================================")
         print(f"Dashboard generated: {dashboard_file}")
+        if exported_report:
+            print(f"Word report generated: {exported_report}")
         print(f"==============================================")
         print(f"Open this file in your browser to view the timing benchmark and layout results!")
 

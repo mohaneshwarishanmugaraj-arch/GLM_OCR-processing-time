@@ -10,32 +10,42 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as OcrIndexRouteImport } from './routes/_ocr/index'
+import { Route as OcrPerformanceRouteImport } from './routes/_ocr/performance'
 
 const OcrIndexRoute = OcrIndexRouteImport.update({
   id: '/_ocr/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OcrPerformanceRoute = OcrPerformanceRouteImport.update({
+  id: '/_ocr/performance',
+  path: '/performance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
+  '/performance': typeof OcrPerformanceRoute
   '/': typeof OcrIndexRoute
 }
 export interface FileRoutesByTo {
+  '/performance': typeof OcrPerformanceRoute
   '/': typeof OcrIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/_ocr/performance': typeof OcrPerformanceRoute
   '/_ocr/': typeof OcrIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/performance' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/_ocr/'
+  to: '/performance' | '/'
+  id: '__root__' | '/_ocr/performance' | '/_ocr/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  OcrPerformanceRoute: typeof OcrPerformanceRoute
   OcrIndexRoute: typeof OcrIndexRoute
 }
 
@@ -48,10 +58,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OcrIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_ocr/performance': {
+      id: '/_ocr/performance'
+      path: '/performance'
+      fullPath: '/performance'
+      preLoaderRoute: typeof OcrPerformanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  OcrPerformanceRoute: OcrPerformanceRoute,
   OcrIndexRoute: OcrIndexRoute,
 }
 export const routeTree = rootRouteImport

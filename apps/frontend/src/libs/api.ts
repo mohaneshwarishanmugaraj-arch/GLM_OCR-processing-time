@@ -154,4 +154,40 @@ export async function getTaskStatus(taskId: string | number): Promise<TaskStatus
 	return response.data.data
 }
 
+/**
+ * 获取测试文件列表
+ */
+export async function getTestFiles(): Promise<string[]> {
+	const response = await api.get<ApiResponse<string[]>>('/tasks/test_files')
+	if (!response.data.success) {
+		throw new Error(response.data.message || '获取测试文件失败')
+	}
+	return response.data.data
+}
+
+/**
+ * 提交测试文件任务
+ */
+export async function submitTestFile(filename: string): Promise<UploadTaskData> {
+	const formData = new FormData()
+	formData.append('filename', filename)
+	formData.append('processing_mode', 'pipeline')
+
+	const response = await api.post<UploadTaskResponse>('/tasks/submit_test_file', formData)
+	if (!response.data.success) {
+		throw new Error(response.data.message || '提交测试文件失败')
+	}
+	return response.data.data
+}
+
+/**
+ * 获取测试文件二进制内容
+ */
+export async function getTestFileBlob(filename: string): Promise<Blob> {
+	const response = await api.get(`/tasks/test_file_content/${filename}`, {
+		responseType: 'blob'
+	})
+	return response.data
+}
+
 export default api
