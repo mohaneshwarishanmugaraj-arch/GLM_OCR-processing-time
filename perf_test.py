@@ -152,7 +152,9 @@ def run_performance_test():
                 resp_data = resp.json()
                 if resp_data.get("success"):
                     task_id = resp_data["data"]["task_id"]
-                    print(f"  Upload successful. Task ID: {task_id}. Polling for completion...")
+                    print(
+                        f"  Upload successful. Task ID: {task_id}. Polling for completion..."
+                    )
 
                     # Poll
                     while True:
@@ -163,9 +165,10 @@ def run_performance_test():
                                 status = poll_data["data"]["status"]
                                 if status == "completed":
                                     success = True
-                                    metadata = poll_data.get("data", {}).get(
-                                        "metadata", {}
-                                    ) or {}
+                                    metadata = (
+                                        poll_data.get("data", {}).get("metadata", {})
+                                        or {}
+                                    )
                                     internal_timings = metadata.get("timings", {}) or {}
                                     break
                                 elif status == "failed":
@@ -175,7 +178,9 @@ def run_performance_test():
                                     break
                         time.sleep(1)  # Poll interval
                 else:
-                    error_msg = resp_data.get("message", "Upload returned success=False")
+                    error_msg = resp_data.get(
+                        "message", "Upload returned success=False"
+                    )
             else:
                 error_msg = f"HTTP {resp.status_code}: {resp.text[:100]}"
         except Exception as e:
@@ -251,7 +256,15 @@ def run_performance_test():
     fail_count = len(results) - success_count
 
     # Checkpoint medians
-    ckpts = ["discovery", "loading", "preparation", "execution", "response", "output", "e2e"]
+    ckpts = [
+        "discovery",
+        "loading",
+        "preparation",
+        "execution",
+        "response",
+        "output",
+        "e2e",
+    ]
     medians = {k: calculate_percentile([r[k] for r in results], 50) for k in ckpts}
 
     # ASCII Report
@@ -282,7 +295,9 @@ def run_performance_test():
     report.append(f"Successful requests: {success_count}")
     report.append(f"Failed requests: {fail_count}")
     report.append(f"Error rate: {(fail_count/len(results))*100:.2f}%")
-    report.append(f"Median request time: {format_ms(calculate_percentile(latencies, 50))}")
+    report.append(
+        f"Median request time: {format_ms(calculate_percentile(latencies, 50))}"
+    )
     report.append(f"p99 request time: {format_ms(calculate_percentile(latencies, 99))}")
     report.append(f"Total sequential time: {total_time:.2f} sec")
     report.append("")

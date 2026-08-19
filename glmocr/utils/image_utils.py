@@ -370,9 +370,7 @@ def pdf_to_images_pil_iter(
                     page, dpi=dpi, max_width_or_height=max_width_or_height
                 )
             except Exception as e:
-                logger.warning(
-                    "Skipping page %d of '%s': %s", i, label, e
-                )
+                logger.warning("Skipping page %d of '%s': %s", i, label, e)
                 continue
             if page_timing_callback is not None:
                 page_timing_callback((time.time() - page_started) * 1000)

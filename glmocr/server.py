@@ -38,9 +38,10 @@ os.environ["https_proxy"] = ""
 
 class MockPipeline:
     """Mock pipeline that uses PyMuPDF (or basic heuristic generator) for OCR simulation.
-    
+
     Provides high-fidelity mock JSON + Markdown results mimicking the actual model behavior.
     """
+
     def __init__(self, config):
         self.config = config
 
@@ -105,17 +106,20 @@ class MockPipeline:
                         page_text += (
                             "```python\n"
                             "def greet_user(name):\n"
-                            "    \"\"\"Print a friendly greeting message.\"\"\"\n"
-                            "    message = f\"Welcome to Python programming, {name}!\"\n"
+                            '    """Print a friendly greeting message."""\n'
+                            '    message = f"Welcome to Python programming, {name}!"\n'
                             "    print(message)\n"
                             "    return message\n"
                             "\n"
-                            "if __name__ == \"__main__\":\n"
-                            "    greet_user(\"Reader\")\n"
+                            'if __name__ == "__main__":\n'
+                            '    greet_user("Reader")\n'
                             "```\n\n"
                             "The above function demonstrates basic syntax, including function definition (`def`), docstrings, and string formatting."
                         )
-                    elif "data science" in doc_title.lower() or "science" in doc_title.lower():
+                    elif (
+                        "data science" in doc_title.lower()
+                        or "science" in doc_title.lower()
+                    ):
                         page_text += (
                             "### Concepts in Modern Data Science\n\n"
                             "Data science combines domain expertise, programming skills, and knowledge of mathematics and statistics to extract meaningful insights from data.\n\n"
@@ -125,7 +129,10 @@ class MockPipeline:
                             "| Machine Learning | Scikit-Learn, PyTorch | Training predictive models |\n"
                             "| Communication | Seaborn, Tableau | Presenting findings to stakeholders |"
                         )
-                    elif "precalculus" in doc_title.lower() or "math" in doc_title.lower():
+                    elif (
+                        "precalculus" in doc_title.lower()
+                        or "math" in doc_title.lower()
+                    ):
                         page_text += (
                             "### Quadratic Equation Properties\n\n"
                             "Consider the general quadratic equation:\n"
@@ -164,12 +171,14 @@ class MockPipeline:
                     if content:
                         y1 = int(100 + block_idx * 150) % 800
                         y2 = y1 + 120
-                        blocks.append({
-                            "index": block_idx,
-                            "label": b_type,
-                            "bbox_2d": [100, y1, 900, y2],
-                            "content": content
-                        })
+                        blocks.append(
+                            {
+                                "index": block_idx,
+                                "label": b_type,
+                                "bbox_2d": [100, y1, 900, y2],
+                                "content": content,
+                            }
+                        )
                         block_idx += 1
 
                 in_code = False
@@ -285,10 +294,14 @@ def create_app(config: "GlmOcrConfig") -> Flask:
         try:
             pipeline = Pipeline(config=config.pipeline)
         except Exception as e:
-            logger.warning("Failed to initialize Pipeline: %s. Falling back to MockPipeline.", e)
+            logger.warning(
+                "Failed to initialize Pipeline: %s. Falling back to MockPipeline.", e
+            )
             pipeline = MockPipeline(config=config.pipeline)
     else:
-        logger.warning("Pipeline is not available due to missing dependencies. Falling back to MockPipeline.")
+        logger.warning(
+            "Pipeline is not available due to missing dependencies. Falling back to MockPipeline."
+        )
         pipeline = MockPipeline(config=config.pipeline)
 
     # Store pipeline and config in app.config
@@ -391,7 +404,10 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                     if isinstance(stage_timings, dict):
                         total += float(stage_timings.get(key, 0.0) or 0.0)
                 timings_ms[key] = total
-            return jsonify(_build_response(json_result, markdown_result, timings_ms)), 200
+            return (
+                jsonify(_build_response(json_result, markdown_result, timings_ms)),
+                200,
+            )
 
         except Exception as e:
             logger.error("Parse error: %s", e)

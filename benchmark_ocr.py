@@ -10,7 +10,9 @@ except ImportError:
 
 # Configuration
 INPUT_DIR = Path(r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR\apps\input")
-OUTPUT_DIR = Path(r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR\apps\output_benchmarks")
+OUTPUT_DIR = Path(
+    r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR\apps\output_benchmarks"
+)
 SDK_SERVER_URL = "http://localhost:5002/glmocr/parse"
 
 BENCHMARK_CHECKPOINTS = [
@@ -47,10 +49,22 @@ def normalize_benchmark_timings(timings_ms):
     """Convert pipeline timing metadata into the checkpoint format expected by the benchmark report."""
     normalized = []
     mapping = {
-        "page_loading_ms": ("Page loading", "Rendered PDF pages with the pipeline page loader"),
-        "layout_detection_ms": ("Layout detection", "Detected page regions and structural layout"),
-        "ocr_inference_ms": ("GLM-OCR model inference", "Executed OCR inference over detected regions"),
-        "postprocessing_ms": ("Post-processing/markdown generation", "Merged OCR output and formatted final markdown"),
+        "page_loading_ms": (
+            "Page loading",
+            "Rendered PDF pages with the pipeline page loader",
+        ),
+        "layout_detection_ms": (
+            "Layout detection",
+            "Detected page regions and structural layout",
+        ),
+        "ocr_inference_ms": (
+            "GLM-OCR model inference",
+            "Executed OCR inference over detected regions",
+        ),
+        "postprocessing_ms": (
+            "Post-processing/markdown generation",
+            "Merged OCR output and formatted final markdown",
+        ),
     }
     for key, (checkpoint_name, description) in mapping.items():
         duration_ms = float(timings_ms.get(key, 0.0) or 0.0)
@@ -73,7 +87,9 @@ def export_word_report(benchmark_data, output_path: Path):
         print("python-docx is not installed; Word export skipped.")
         return None
 
-    ordered_checkpoints, missing = check_checkpoint_coverage(benchmark_data.get("checkpoints", []))
+    ordered_checkpoints, missing = check_checkpoint_coverage(
+        benchmark_data.get("checkpoints", [])
+    )
     report_path = Path(output_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -91,7 +107,9 @@ def export_word_report(benchmark_data, output_path: Path):
     doc.add_paragraph(f"Target file: {benchmark_data.get('filename', 'Unknown file')}")
     doc.add_paragraph(f"Pages: {benchmark_data.get('pages', 0)}")
     doc.add_paragraph(f"File size: {benchmark_data.get('size_mb', 0):.2f} MB")
-    doc.add_paragraph(f"Total execution time: {benchmark_data.get('total_time', 0):.3f} seconds")
+    doc.add_paragraph(
+        f"Total execution time: {benchmark_data.get('total_time', 0):.3f} seconds"
+    )
 
     doc.add_heading("Processing Duration Breakdown", level=1)
     table = doc.add_table(rows=1, cols=4)
@@ -114,7 +132,9 @@ def export_word_report(benchmark_data, output_path: Path):
         doc.add_paragraph(f"{checkbox} {checkpoint_name}")
 
     if missing:
-        doc.add_paragraph("Missing checkpoints from the current run: " + ", ".join(missing))
+        doc.add_paragraph(
+            "Missing checkpoints from the current run: " + ", ".join(missing)
+        )
 
     doc.add_heading("Benchmark Performance Summary", level=1)
     doc.add_paragraph(
@@ -232,7 +252,15 @@ def generate_dashboard_html(benchmark_data, pdf_list):
 
     # Build CSS bar charts
     chart_bars = ""
-    colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"]
+    colors = [
+        "#3b82f6",
+        "#10b981",
+        "#f59e0b",
+        "#ef4444",
+        "#8b5cf6",
+        "#ec4899",
+        "#14b8a6",
+    ]
     for idx, c in enumerate(benchmark_data["checkpoints"]):
         pct = (c["duration"] / benchmark_data["total_time"]) * 100
         color = colors[idx % len(colors)]
@@ -723,7 +751,9 @@ def render_mock_markdown_html(md_text):
 
     html = md_text
     # Code blocks
-    html = re.sub(r"```python\n(.*?)\n```", r"<pre><code>\1</code></pre>", html, flags=re.DOTALL)
+    html = re.sub(
+        r"```python\n(.*?)\n```", r"<pre><code>\1</code></pre>", html, flags=re.DOTALL
+    )
     # Math blocks
     html = re.sub(
         r"\$\$\n(.*?)\n\$\$",
@@ -742,7 +772,9 @@ def render_mock_markdown_html(md_text):
                 continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
             tag = "th" if idx == 0 else "td"
-            table_html += "<tr>" + "".join(f"<{tag}>{cell}</{tag}>" for cell in cells) + "</tr>"
+            table_html += (
+                "<tr>" + "".join(f"<{tag}>{cell}</{tag}>" for cell in cells) + "</tr>"
+            )
         table_html += "</table>"
         return table_html
 
@@ -800,7 +832,9 @@ def main():
         if exported_report:
             print(f"Word report generated: {exported_report}")
         print("==============================================")
-        print("Open this file in your browser to view the timing benchmark and layout results!")
+        print(
+            "Open this file in your browser to view the timing benchmark and layout results!"
+        )
 
 
 if __name__ == "__main__":
