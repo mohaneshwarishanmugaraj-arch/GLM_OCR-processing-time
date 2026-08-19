@@ -1,8 +1,5 @@
-import os
 import sys
-import time
 import json
-import urllib.parse
 from pathlib import Path
 import requests
 
@@ -17,13 +14,10 @@ OUTPUT_DIR = Path(r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR\apps\output_
 SDK_SERVER_URL = "http://localhost:5002/glmocr/parse"
 
 BENCHMARK_CHECKPOINTS = [
-    "PDF loading",
-    "PDF -> page/image conversion",
-    "Layout model initialization",
+    "Page loading",
     "Layout detection",
-    "Region/crop preparation",
     "GLM-OCR model inference",
-    "Recognition of all regions",
+    "Post-processing/markdown generation",
 ]
 
 
@@ -47,6 +41,28 @@ def check_checkpoint_coverage(checkpoints):
             continue
         ordered.append(checkpoint)
     return ordered, missing
+
+
+def normalize_benchmark_timings(timings_ms):
+    """Convert pipeline timing metadata into the checkpoint format expected by the benchmark report."""
+    normalized = []
+    mapping = {
+        "page_loading_ms": ("Page loading", "Rendered PDF pages with the pipeline page loader"),
+        "layout_detection_ms": ("Layout detection", "Detected page regions and structural layout"),
+        "ocr_inference_ms": ("GLM-OCR model inference", "Executed OCR inference over detected regions"),
+        "postprocessing_ms": ("Post-processing/markdown generation", "Merged OCR output and formatted final markdown"),
+    }
+    for key, (checkpoint_name, description) in mapping.items():
+        duration_ms = float(timings_ms.get(key, 0.0) or 0.0)
+        normalized.append(
+            {
+                "step": len(normalized) + 1,
+                "checkpoint": checkpoint_name,
+                "duration": duration_ms / 1000.0,
+                "description": description,
+            }
+        )
+    return normalized
 
 
 def export_word_report(benchmark_data, output_path: Path):
@@ -116,104 +132,31 @@ def export_word_report(benchmark_data, output_path: Path):
 
 def parse_pdf_with_benchmarks(pdf_path: Path):
     """Parse a single PDF, measuring checkpoints and saving JSON/MD results."""
-    print(f"\n==============================================")
+    print("\n==============================================")
     print(f"Benchmarking OCR for: {pdf_path.name}")
-    print(f"==============================================")
-    
+    print("==============================================")
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # Checkpoints container
-    checkpoints = []
-    
-    # Step 1: PDF loading
-    t0 = time.time()
-    print("Step 1: Loading PDF metadata...")
+
+    print("Reading PDF metadata for reporting...")
     num_pages = 0
-    pdf_title = pdf_path.stem
     file_size_mb = pdf_path.stat().st_size / (1024 * 1024)
-    
+
     if fitz is not None:
         try:
             doc = fitz.open(pdf_path)
             num_pages = len(doc)
-            if doc.metadata and doc.metadata.get("title"):
-                pdf_title = doc.metadata.get("title")
             doc.close()
         except Exception as e:
             print(f"Warning: Failed to read PDF metadata via PyMuPDF: {e}")
             num_pages = 1
     else:
         num_pages = 1  # Fallback
-        
-    t1 = time.time()
-    checkpoints.append({
-        "step": 1,
-        "checkpoint": "PDF loading",
-        "duration": t1 - t0,
-        "description": f"Loaded metadata for '{pdf_path.name}' ({file_size_mb:.2f} MB)"
-    })
-    
-    # Step 2: PDF -> page/image conversion
-    print("Step 2: PDF -> page/image conversion...")
-    # Simulate page rendering time (since our backend/mock server does the actual extraction)
-    # PyMuPDF page rendering usually takes ~100-200ms per page
-    conversion_time = max(0.05, num_pages * 0.12)
-    time.sleep(min(1.5, conversion_time))  # Cap sleep to 1.5s max to keep benchmarks fast
-    t2 = time.time()
-    checkpoints.append({
-        "step": 2,
-        "checkpoint": "PDF -> page/image conversion",
-        "duration": conversion_time,
-        "description": f"Converted {num_pages} pages into high-resolution layout images"
-    })
-    
-    # Step 3: Layout model initialization
-    print("Step 3: Layout model initialization...")
-    # Simulate layout detection engine initialization (e.g. PP-DocLayout-V3)
-    layout_init_time = 0.45
-    time.sleep(layout_init_time)
-    t3 = time.time()
-    checkpoints.append({
-        "step": 3,
-        "checkpoint": "Layout model initialization",
-        "duration": layout_init_time,
-        "description": "Loaded PP-DocLayout-V3 weights onto execution device"
-    })
-    
-    # Step 4: Layout detection
-    print("Step 4: Layout detection...")
-    # Simulate layout detection inference time per page (usually ~150-250ms per page)
-    layout_det_time = max(0.1, num_pages * 0.22)
-    time.sleep(min(2.0, layout_det_time))  # Cap sleep to 2.0s max
-    t4 = time.time()
-    checkpoints.append({
-        "step": 4,
-        "checkpoint": "Layout detection",
-        "duration": layout_det_time,
-        "description": f"Analyzed page hierarchies, detected title, tables, formulas, and text regions"
-    })
-    
-    # Step 5: Region/crop preparation
-    print("Step 5: Region/crop preparation...")
-    # Simulate cropping and preprocessing images
-    crop_prep_time = max(0.02, num_pages * 0.05)
-    time.sleep(min(1.0, crop_prep_time))  # Cap sleep to 1.0s max
-    t5 = time.time()
-    checkpoints.append({
-        "step": 5,
-        "checkpoint": "Region/crop preparation",
-        "duration": crop_prep_time,
-        "description": "Cropped and normalized detected layout regions for VLM input"
-    })
-    
-    # Step 6: GLM-OCR model inference
-    print("Step 6: GLM-OCR model inference...")
-    # Actually call the local SDK server running on port 5002!
-    # We measure this network call, which represents the VLM model execution time
-    vlm_start = time.time()
+
+    print("Requesting OCR; timings come from internal pipeline instrumentation...")
     file_uri = f"file:///{pdf_path.absolute().as_posix()}"
     payload = {"images": [file_uri]}
-    
+
     try:
         response = requests.post(SDK_SERVER_URL, json=payload, timeout=60)
         response.raise_for_status()
@@ -222,48 +165,29 @@ def parse_pdf_with_benchmarks(pdf_path: Path):
         print(f"Error calling GLM-OCR SDK server: {e}")
         print("Make sure the SDK Flask server is running at http://localhost:5002")
         return None
-        
-    vlm_end = time.time()
-    vlm_duration = vlm_end - vlm_start
-    
-    # Since VLM inference handles all regions, we attribute a part of this to model inference
-    checkpoints.append({
-        "step": 6,
-        "checkpoint": "GLM-OCR model inference",
-        "duration": vlm_duration * 0.8,
-        "description": f"Executed GLM-OCR VLM parsing via HTTP server"
-    })
-    
-    # Step 7: Recognition of all regions
-    print("Step 7: Recognition of all regions (post-processing)...")
-    checkpoints.append({
-        "step": 7,
-        "checkpoint": "Recognition of all regions",
-        "duration": vlm_duration * 0.2,
-        "description": "Merged page markdown segments and formatted LaTeX tables/formulas"
-    })
-    
+
+    checkpoints = normalize_benchmark_timings(resp_data.get("timings_ms", {}))
     total_time = sum(c["duration"] for c in checkpoints)
     print(f"Successfully parsed '{pdf_path.name}' in {total_time:.2f}s!")
-    
+
     # Extract results
     json_result = resp_data.get("json_result", [])
     markdown_result = resp_data.get("markdown_result", "")
-    
+
     # Save outputs
     stem = pdf_path.stem
     json_out_file = OUTPUT_DIR / f"{stem}.json"
     md_out_file = OUTPUT_DIR / f"{stem}.md"
-    
+
     with open(json_out_file, "w", encoding="utf-8") as f:
         json.dump(json_result, f, ensure_ascii=False, indent=2)
-        
+
     with open(md_out_file, "w", encoding="utf-8") as f:
         f.write(markdown_result)
-        
+
     print(f"Saved JSON output to: {json_out_file}")
     print(f"Saved MD output to: {md_out_file}")
-    
+
     return {
         "filename": pdf_path.name,
         "size_mb": file_size_mb,
@@ -273,17 +197,18 @@ def parse_pdf_with_benchmarks(pdf_path: Path):
         "markdown": markdown_result,
         "json": json_result,
         "json_path": str(json_out_file.absolute()),
-        "md_path": str(md_out_file.absolute())
+        "md_path": str(md_out_file.absolute()),
     }
+
 
 def generate_dashboard_html(benchmark_data, pdf_list):
     """Generate a gorgeous dark-themed HTML dashboard matching the design guidelines."""
     # Build list of PDFs for the sidebar
     sidebar_items = ""
-    for idx, pdf in enumerate(pdf_list):
+    for pdf in pdf_list:
         active_class = "active" if pdf.name == benchmark_data["filename"] else ""
         size_mb = pdf.stat().st_size / (1024 * 1024)
-        sidebar_items += f'''
+        sidebar_items += f"""
         <div class="sidebar-item {active_class}" onclick="window.location.reload()">
             <div class="pdf-icon">📄</div>
             <div class="pdf-info">
@@ -291,27 +216,27 @@ def generate_dashboard_html(benchmark_data, pdf_list):
                 <div class="pdf-meta">{size_mb:.2f} MB</div>
             </div>
         </div>
-        '''
-        
+        """
+
     # Build timing table rows
     table_rows = ""
     for c in benchmark_data["checkpoints"]:
-        table_rows += f'''
+        table_rows += f"""
         <tr>
             <td class="step-col">{c['step']}</td>
             <td class="checkpoint-col">{c['checkpoint']}</td>
             <td class="duration-col">{c['duration']:.3f}s</td>
             <td class="desc-col">{c['description']}</td>
         </tr>
-        '''
-        
+        """
+
     # Build CSS bar charts
     chart_bars = ""
     colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"]
     for idx, c in enumerate(benchmark_data["checkpoints"]):
         pct = (c["duration"] / benchmark_data["total_time"]) * 100
         color = colors[idx % len(colors)]
-        chart_bars += f'''
+        chart_bars += f"""
         <div class="chart-item">
             <div class="chart-label">
                 <span>{c['checkpoint']}</span>
@@ -321,12 +246,12 @@ def generate_dashboard_html(benchmark_data, pdf_list):
                 <div class="chart-bar" style="width: {pct}%; background-color: {color};"></div>
             </div>
         </div>
-        '''
+        """
 
     # Format JSON safely for HTML pre representation
     json_formatted = json.dumps(benchmark_data["json"], ensure_ascii=False, indent=2)
 
-    html_content = f'''<!DOCTYPE html>
+    html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -788,54 +713,63 @@ def generate_dashboard_html(benchmark_data, pdf_list):
 
 </body>
 </html>
-'''
+"""
     return html_content
+
 
 def render_mock_markdown_html(md_text):
     """Simple parser to render Markdown text to clean HTML for display."""
     import re
+
     html = md_text
     # Code blocks
-    html = re.sub(r'```python\n(.*?)\n```', r'<pre><code>\1</code></pre>', html, flags=re.DOTALL)
+    html = re.sub(r"```python\n(.*?)\n```", r"<pre><code>\1</code></pre>", html, flags=re.DOTALL)
     # Math blocks
-    html = re.sub(r'\$\$\n(.*?)\n\$\$', r'<pre style="text-align: center; background-color: #f0fdf4; color: #166534;"><code>\1</code></pre>', html, flags=re.DOTALL)
+    html = re.sub(
+        r"\$\$\n(.*?)\n\$\$",
+        r'<pre style="text-align: center; background-color: #f0fdf4; color: #166534;"><code>\1</code></pre>',
+        html,
+        flags=re.DOTALL,
+    )
+
     # Tables
     # Identify tables and wrap in <table> tags
     def table_repl(match):
-        lines = match.group(0).strip().split('\n')
-        table_html = '<table>'
+        lines = match.group(0).strip().split("\n")
+        table_html = "<table>"
         for idx, line in enumerate(lines):
-            if '---|' in line or '--|' in line:
+            if "---|" in line or "--|" in line:
                 continue
-            cells = [c.strip() for c in line.split('|')[1:-1]]
-            tag = 'th' if idx == 0 else 'td'
-            table_html += '<tr>' + ''.join(f'<{tag}>{cell}</{tag}>' for cell in cells) + '</tr>'
-        table_html += '</table>'
+            cells = [c.strip() for c in line.split("|")[1:-1]]
+            tag = "th" if idx == 0 else "td"
+            table_html += "<tr>" + "".join(f"<{tag}>{cell}</{tag}>" for cell in cells) + "</tr>"
+        table_html += "</table>"
         return table_html
-    
-    html = re.sub(r'(\|.*?\|\n)+', table_repl, html)
+
+    html = re.sub(r"(\|.*?\|\n)+", table_repl, html)
     # Headers
-    html = re.sub(r'^### (.*?)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
-    html = re.sub(r'^## (.*?)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
-    html = re.sub(r'^# (.*?)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
-    
+    html = re.sub(r"^### (.*?)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
+    html = re.sub(r"^## (.*?)$", r"<h2>\1</h2>", html, flags=re.MULTILINE)
+    html = re.sub(r"^# (.*?)$", r"<h1>\1</h1>", html, flags=re.MULTILINE)
+
     # Linebreaks / paras
-    html = html.replace('\n\n', '<br>')
+    html = html.replace("\n\n", "<br>")
     return html
+
 
 def main():
     pdfs = scan_pdfs()
     if not pdfs:
         print("No PDFs found in apps/input directory.")
         return
-        
+
     print("Available PDFs:")
     for idx, pdf in enumerate(pdfs):
-        print(f" {idx + 1}. {pdf.name} ({pdf.stat().st_size / (1024*1024):.2f} MB)")
-        
+        print(f" {idx + 1}. {pdf.name} ({pdf.stat().st_size / (1024 * 1024):.2f} MB)")
+
     # By default, process the smallest PDF for timing efficiency
     target_pdf = pdfs[0]
-    
+
     # Allow passing file index or name as argument
     if len(sys.argv) > 1:
         arg = sys.argv[1]
@@ -861,12 +795,13 @@ def main():
         word_report_file = OUTPUT_DIR / f"{target_pdf.stem}_performance_benchmark.docx"
         exported_report = export_word_report(benchmark_data, word_report_file)
 
-        print(f"\n==============================================")
+        print("\n==============================================")
         print(f"Dashboard generated: {dashboard_file}")
         if exported_report:
             print(f"Word report generated: {exported_report}")
-        print(f"==============================================")
-        print(f"Open this file in your browser to view the timing benchmark and layout results!")
+        print("==============================================")
+        print("Open this file in your browser to view the timing benchmark and layout results!")
+
 
 if __name__ == "__main__":
     main()

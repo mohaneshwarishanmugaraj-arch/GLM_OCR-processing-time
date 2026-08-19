@@ -30,6 +30,7 @@ class BaseParserResult(ABC):
         original_images: Optional[List[str]] = None,
         image_files: Optional[Dict[str, Any]] = None,
         raw_json_result: Optional[list] = None,
+        timings_ms: Optional[Dict[str, float]] = None,
     ):
         """Initialize.
 
@@ -56,6 +57,7 @@ class BaseParserResult(ABC):
         ]
         self.image_files = image_files
         self.raw_json_result = raw_json_result
+        self.timings_ms = dict(timings_ms) if timings_ms else {}
 
     @abstractmethod
     def save(
@@ -134,6 +136,8 @@ class BaseParserResult(ABC):
             "markdown_result": self.markdown_result or "",
             "original_images": self.original_images,
         }
+        if getattr(self, "timings_ms", None):
+            d["timings_ms"] = dict(self.timings_ms)
         # Include optional metadata set by MaaS mode.
         for attr in ("_usage", "_data_info", "_error"):
             val = getattr(self, attr, None)

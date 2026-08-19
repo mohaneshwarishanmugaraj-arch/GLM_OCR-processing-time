@@ -26,6 +26,7 @@ class PipelineResult(BaseParserResult):
         image_files: Optional[dict] = None,
         raw_json_result: Optional[list] = None,
         layout_vis_images: Optional[Dict[int, Any]] = None,
+        timings_ms: Optional[Dict[str, float]] = None,
     ):
         """Initialize.
 
@@ -47,6 +48,7 @@ class PipelineResult(BaseParserResult):
             raw_json_result=raw_json_result,
         )
         self.layout_vis_images = layout_vis_images
+        self.timings_ms = dict(timings_ms) if timings_ms else {}
 
     def save(
         self,

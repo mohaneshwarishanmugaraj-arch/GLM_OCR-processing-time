@@ -4,7 +4,9 @@ import io
 import fitz
 import math
 import base64
+import time
 from io import BytesIO
+from typing import Callable, Optional
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -334,6 +336,7 @@ def pdf_to_images_pil_iter(
     max_width_or_height: int = 3500,
     start_page_id: int = 0,
     end_page_id: int = None,
+    page_timing_callback: Optional[Callable[[float], None]] = None,
 ):
     """Convert PDF to PIL Images one page at a time (generator).
 
@@ -360,20 +363,20 @@ def pdf_to_images_pil_iter(
         if end_page_id >= page_count:
             end_page_id = page_count - 1
         for i in range(start_page_id, end_page_id + 1):
+            page_started = time.time()
             try:
                 page = doc.load_page(i)
-            except Exception as e:
-                logger.warning("Skipping page %d of '%s': %s", i, label, e)
-                continue
-            try:
                 image, _ = _render_page_to_pil(
                     page, dpi=dpi, max_width_or_height=max_width_or_height
                 )
-                yield image
             except Exception as e:
                 logger.warning(
-                    "Skipping page %d of '%s' (render failed): %s", i, label, e
+                    "Skipping page %d of '%s': %s", i, label, e
                 )
+                continue
+            if page_timing_callback is not None:
+                page_timing_callback((time.time() - page_started) * 1000)
+            yield image
     finally:
         if doc is not None:
             doc.close()

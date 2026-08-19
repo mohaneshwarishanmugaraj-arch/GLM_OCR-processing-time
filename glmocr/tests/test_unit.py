@@ -1169,6 +1169,45 @@ class TestBaseParserResultSerialization:
         assert "original_images" in d
         assert d["markdown_result"] == "# Hello"
 
+    def test_to_dict_includes_timings_ms_when_set(self):
+        timings = {
+            "page_loading_ms": 123.4,
+            "layout_detection_ms": 456.7,
+            "ocr_inference_ms": 789.1,
+            "postprocessing_ms": 98.2,
+        }
+        r = self._make_result(timings_ms=timings)
+        d = r.to_dict()
+        assert d["timings_ms"] == timings
+
+    def test_record_unit_timing_accumulates_stage_duration(self):
+        from glmocr.pipeline._state import PipelineState
+
+        state = PipelineState()
+        state.record_unit_timing(0, "ocr_inference_ms", 50.0)
+        state.record_unit_timing(0, "ocr_inference_ms", 75.0)
+
+        assert state.get_unit_timings(0)["ocr_inference_ms"] == pytest.approx(125.0)
+
+    def test_benchmark_ocr_normalizes_pipeline_timings(self):
+        import benchmark_ocr
+
+        timings = {
+            "page_loading_ms": 1000.0,
+            "layout_detection_ms": 2000.0,
+            "ocr_inference_ms": 3000.0,
+            "postprocessing_ms": 400.0,
+        }
+        checkpoints = benchmark_ocr.normalize_benchmark_timings(timings)
+        assert [c["checkpoint"] for c in checkpoints] == [
+            "Page loading",
+            "Layout detection",
+            "GLM-OCR model inference",
+            "Post-processing/markdown generation",
+        ]
+        assert checkpoints[0]["duration"] == pytest.approx(1.0)
+        assert checkpoints[1]["duration"] == pytest.approx(2.0)
+
     def test_to_dict_includes_usage_when_set(self):
         r = self._make_result()
         r._usage = {"total_tokens": 42}

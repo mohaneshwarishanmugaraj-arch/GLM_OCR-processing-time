@@ -243,9 +243,9 @@ class MockPipeline:
             )
 
 
-def _build_response(json_result, markdown_result):
+def _build_response(json_result, markdown_result, timings_ms=None):
     """Build response dict with both SDK native and MaaS-compatible fields."""
-    return {
+    payload = {
         # SDK native fields
         "json_result": json_result,
         "markdown_result": markdown_result,
@@ -258,6 +258,9 @@ def _build_response(json_result, markdown_result):
         "id": f"chatcmpl-{uuid.uuid4().hex[:29]}",
         "created": int(time.time()),
     }
+    if timings_ms:
+        payload["timings_ms"] = dict(timings_ms)
+    return payload
 
 
 def create_app(config: "GlmOcrConfig") -> Flask:
@@ -356,8 +359,18 @@ def create_app(config: "GlmOcrConfig") -> Flask:
                 return jsonify(_build_response(None, "")), 200
             if len(results) == 1:
                 r = results[0]
+                raw_timings = getattr(r, "timings_ms", None) or {}
+                timings_for_response = (
+                    dict(raw_timings) if isinstance(raw_timings, dict) else {}
+                )
                 return (
-                    jsonify(_build_response(r.json_result, r.markdown_result or "")),
+                    jsonify(
+                        _build_response(
+                            r.json_result,
+                            r.markdown_result or "",
+                            timings_for_response,
+                        )
+                    ),
                     200,
                 )
             # Multiple units: merge json as list, markdown with separator
@@ -365,7 +378,20 @@ def create_app(config: "GlmOcrConfig") -> Flask:
             markdown_result = "\n\n---\n\n".join(
                 r.markdown_result or "" for r in results
             )
-            return jsonify(_build_response(json_result, markdown_result)), 200
+            timings_ms = {}
+            for key in (
+                "page_loading_ms",
+                "layout_detection_ms",
+                "ocr_inference_ms",
+                "postprocessing_ms",
+            ):
+                total = 0.0
+                for r in results:
+                    stage_timings = getattr(r, "timings_ms", None) or {}
+                    if isinstance(stage_timings, dict):
+                        total += float(stage_timings.get(key, 0.0) or 0.0)
+                timings_ms[key] = total
+            return jsonify(_build_response(json_result, markdown_result, timings_ms)), 200
 
         except Exception as e:
             logger.error("Parse error: %s", e)

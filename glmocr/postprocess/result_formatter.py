@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import json
+import time
 from copy import deepcopy
 from typing import TYPE_CHECKING, List, Dict, Tuple, Any
 
@@ -161,7 +162,7 @@ class ResultFormatter(BasePostProcessor):
             ``filename`` → PIL Image for the caller to persist.
         """
         json_final_results = []
-
+        format_regions_start = time.time()
         with profiler.measure("format_regions"):
             for page_idx, results in enumerate(grouped_results):
                 # Sort
@@ -220,10 +221,12 @@ class ResultFormatter(BasePostProcessor):
                     json_page_results = self._format_bullet_points(json_page_results)
 
                 json_final_results.append(json_page_results)
+        self._last_format_regions_ms = (time.time() - format_regions_start) * 1000
 
         # Generate markdown results and resolve image regions
         image_files: Dict[str, Any] = {}
         image_counter = 0
+        markdown_start = time.time()
         with profiler.measure("generate_markdown"):
             markdown_final_results = []
             for page_idx, json_page_results in enumerate(json_final_results):
@@ -250,9 +253,12 @@ class ResultFormatter(BasePostProcessor):
                     elif content:
                         markdown_page_results.append(content)
                 markdown_final_results.append("\n\n".join(markdown_page_results))
+        self._last_markdown_ms = (time.time() - markdown_start) * 1000
 
+        serialize_start = time.time()
         with profiler.measure("serialize_json"):
             json_str = json.dumps(json_final_results, ensure_ascii=False)
+        self._last_serialize_ms = (time.time() - serialize_start) * 1000
         markdown_str = "\n\n".join(markdown_final_results)
 
         return json_str, markdown_str, image_files

@@ -285,6 +285,7 @@ class OCRClient:
 
         for attempt in range(total_attempts):
             try:
+                request_start = time.time()
                 with profiler.measure("http_request"):
                     response = self._session.post(
                         self.api_url,
@@ -293,6 +294,7 @@ class OCRClient:
                         timeout=self.request_timeout,
                         verify=self.verify_ssl,
                     )
+                self._last_http_request_ms = (time.time() - request_start) * 1000
 
                 if response.status_code == 200:
                     result = response.json()

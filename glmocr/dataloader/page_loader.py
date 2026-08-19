@@ -17,7 +17,7 @@ import os
 import base64
 import time
 from io import BytesIO
-from typing import TYPE_CHECKING, Dict, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Dict, Any, List, Optional, Tuple, Union
 
 from PIL import Image
 
@@ -142,7 +142,9 @@ class PageLoader:
         return all_pages, unit_indices
 
     def iter_pages_with_unit_indices(
-        self, sources: Union[str, bytes, List[Union[str, bytes]]]
+        self,
+        sources: Union[str, bytes, List[Union[str, bytes]]],
+        page_timing_callback: Optional[Callable[[int, float], None]] = None,
     ):
         """Stream pages one at a time with unit index per page.
 
@@ -159,7 +161,9 @@ class PageLoader:
             sources = [sources]
         for unit_idx, source in enumerate(sources):
             try:
-                for page in self._iter_source(source):
+                for page, duration_ms in self._iter_source(source):
+                    if page_timing_callback is not None:
+                        page_timing_callback(unit_idx, duration_ms)
                     yield page, unit_idx
             except Exception as e:
                 logger.warning("Skipping source (unit %d): %s", unit_idx, e)
@@ -170,7 +174,8 @@ class PageLoader:
             if source[:5] == b"%PDF-":
                 yield from self._iter_pdf_bytes(source)
             else:
-                yield Image.open(BytesIO(source))
+                started = time.time()
+                yield Image.open(BytesIO(source)), (time.time() - started) * 1000
             return
 
         if source.startswith("file://"):
@@ -181,7 +186,8 @@ class PageLoader:
         if os.path.isfile(file_path) and file_path.lower().endswith(".pdf"):
             yield from self._iter_pdf(file_path)
         else:
-            yield self._load_image(source)
+            started = time.time()
+            yield self._load_image(source), (time.time() - started) * 1000
 
     def _compute_end_page(self) -> Optional[int]:
         """Parse pdf_max_pages into 0-based inclusive end page index, or None for last page."""
@@ -198,30 +204,42 @@ class PageLoader:
     def _iter_pdf(self, file_path: str):
         """Yield PDF pages one at a time (streaming)."""
         end_page = self._compute_end_page()
+        page_timings: List[float] = []
+
+        def record_page_timing(duration_ms: float) -> None:
+            page_timings.append(duration_ms)
+
         for image in pdf_to_images_pil_iter(
             file_path,
             dpi=self.pdf_dpi,
             max_width_or_height=3500,
             start_page_id=0,
             end_page_id=end_page,
+            page_timing_callback=record_page_timing,
         ):
-            yield image
+            yield image, page_timings.pop(0)
 
     def _iter_pdf_bytes(self, data: bytes):
         """Yield PDF pages from raw bytes one at a time."""
         end_page = self._compute_end_page()
+        page_timings: List[float] = []
+
+        def record_page_timing(duration_ms: float) -> None:
+            page_timings.append(duration_ms)
+
         for image in pdf_to_images_pil_iter(
             data,
             dpi=self.pdf_dpi,
             max_width_or_height=3500,
             start_page_id=0,
             end_page_id=end_page,
+            page_timing_callback=record_page_timing,
         ):
-            yield image
+            yield image, page_timings.pop(0)
 
     def _load_pdf_bytes(self, data: bytes) -> List[Image.Image]:
         """Load all pages from PDF bytes."""
-        t0 = time.perf_counter()
+        t0 = time.time()
         end_page = self._compute_end_page()
         pages = pdf_to_images_pil(
             data,
@@ -232,7 +250,7 @@ class PageLoader:
         )
         profiler.log(
             "pdf_to_images_pil(<bytes>)",
-            (time.perf_counter() - t0) * 1000,
+            (time.time() - t0) * 1000,
         )
         return pages
 
@@ -282,7 +300,7 @@ class PageLoader:
 
     def _load_pdf(self, file_path: str) -> List[Image.Image]:
         """Load all pages from a PDF file."""
-        t0 = time.perf_counter()
+        t0 = time.time()
         end_page = self._compute_end_page()
         pages = pdf_to_images_pil(
             file_path,
@@ -293,7 +311,7 @@ class PageLoader:
         )
         profiler.log(
             f"pdf_to_images_pil({os.path.basename(file_path)})",
-            (time.perf_counter() - t0) * 1000,
+            (time.time() - t0) * 1000,
         )
         return pages
 

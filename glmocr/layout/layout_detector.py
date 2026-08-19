@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, List, Dict
 
 import cv2
@@ -324,8 +325,10 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
             inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
+            model_start = time.time()
             with torch.no_grad():
                 outputs = self._model(**inputs)
+            self._last_model_inference_ms = (time.time() - model_start) * 1000
 
             target_sizes = torch.tensor(
                 [img.size[::-1] for img in chunk_pil], device=self._device
@@ -339,10 +342,10 @@ class PPDocLayoutDetector(BaseLayoutDetector):
             else:
                 pre_threshold = self.threshold
 
+            postprocess_start = time.time()
             raw_results = self._post_process_chunk_with_fallback(
                 chunk_pil, outputs, target_sizes, pre_threshold, chunk_start
             )
-
             if self.threshold_by_class:
                 raw_results = self._apply_per_class_threshold(raw_results)
             img_sizes = [img.size for img in chunk_pil]
@@ -354,6 +357,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                 layout_unclip_ratio=self.layout_unclip_ratio,
                 layout_merge_bboxes_mode=self.layout_merge_bboxes_mode,
             )
+            self._last_postprocess_ms = (time.time() - postprocess_start) * 1000
             all_paddle_format_results.extend(paddle_format_results)
 
             if self._device.startswith("cuda") and chunk_end < num_images:

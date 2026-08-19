@@ -48,6 +48,10 @@ class PipelineState:
         self._results_by_page: Dict[int, List[Dict]] = {}
         self._results_lock = threading.Lock()
 
+        # ── Timing metadata per unit (unit_idx -> stage name -> ms) ──
+        self.unit_timings: Dict[int, Dict[str, float]] = {}
+        self._timings_lock = threading.Lock()
+
         # ── Pre-cropped images for image-type regions ─────────────────
         self._image_region_store: Dict[int, Dict[tuple, Any]] = {}
         self._image_store_lock = threading.Lock()
@@ -142,6 +146,18 @@ class PipelineState:
                 self._results_by_page.pop(pi, None)
         for pi in page_indices:
             self.layout_results_dict.pop(pi, None)
+
+    def record_unit_timing(self, unit_idx: int, stage: str, duration_ms: float) -> None:
+        """Accumulate elapsed milliseconds for one pipeline stage for a unit."""
+        with self._timings_lock:
+            timings = self.unit_timings.setdefault(unit_idx, {})
+            base_ms = float(timings.get(stage, 0.0) or 0.0)
+            timings[stage] = base_ms + float(duration_ms)
+
+    def get_unit_timings(self, unit_idx: int) -> Dict[str, float]:
+        """Return the recorded timing metadata for one unit."""
+        with self._timings_lock:
+            return dict(self.unit_timings.get(unit_idx, {}))
 
     # ------------------------------------------------------------------
     # Pre-cropped image store (for image-type regions)

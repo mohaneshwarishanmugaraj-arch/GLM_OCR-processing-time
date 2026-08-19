@@ -1,25 +1,33 @@
 import os
-import sys
-import time
 import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 
 # Paths
 ROOT_DIR = Path(__file__).parent.resolve()
 BACKEND_DIR = ROOT_DIR / "apps" / "backend"
 FRONTEND_DIR = ROOT_DIR / "apps" / "frontend"
+DEFAULT_PYTHON = Path(sys.executable)
 VENV_PYTHON = BACKEND_DIR / ".venv" / "Scripts" / "python.exe"
 
 processes = []
 
+
+def resolve_python_executable() -> str:
+    """Return a valid Python executable for backend and SDK processes."""
+    venv_cfg = BACKEND_DIR / ".venv" / "pyvenv.cfg"
+    if VENV_PYTHON.exists() and venv_cfg.exists():
+        return str(VENV_PYTHON)
+    if venv_cfg.exists():
+        print(f"[startup] Ignoring incomplete backend venv at {BACKEND_DIR / '.venv'}")
+    return str(DEFAULT_PYTHON)
+
+
 def run_service(name, cmd, cwd):
     """Run a subprocess and print its output with a prefix."""
     print(f"[{name}] Starting: {cmd} in {cwd}")
-    
-    # On Windows, we use shell=True for node/pnpm commands
-    is_shell = True if "pnpm" in cmd else False
-    
     try:
         proc = subprocess.Popen(
             cmd,
@@ -27,52 +35,55 @@ def run_service(name, cmd, cwd):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            shell=is_shell
+            shell=False,
         )
         processes.append(proc)
-        
-        # Read stdout in real-time
-        for line in iter(proc.stdout.readline, ''):
-            print(f"[{name}] {line.strip()}")
-            
+
+        for line in iter(proc.stdout.readline, ""):
+            if line:
+                print(f"[{name}] {line.strip()}")
+
     except Exception as e:
         print(f"[{name}] Error: {e}")
+
 
 def main():
     print("==========================================================")
     print("Starting GLM-OCR Application Suite (Frontend, Backend, SDK)")
     print("==========================================================")
-    
-    # 1. Start SDK Flask Server
+
+    py_exe = resolve_python_executable()
+    print(f"Using Python interpreter: {py_exe}")
+
     sdk_thread = threading.Thread(
         target=run_service,
-        args=("SDK Server", [str(VENV_PYTHON), "-m", "glmocr.server"], ROOT_DIR),
-        daemon=True
+        args=("SDK Server", [py_exe, "-m", "glmocr.server"], ROOT_DIR),
+        daemon=True,
     )
-    
-    # 2. Start Backend FastAPI
+
     backend_thread = threading.Thread(
         target=run_service,
-        args=("Backend API", [str(VENV_PYTHON), "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"], BACKEND_DIR),
-        daemon=True
+        args=(
+            "Backend API",
+            [py_exe, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+            BACKEND_DIR,
+        ),
+        daemon=True,
     )
-    
-    # 3. Start Frontend dev server
-    # Resolve pnpm.cmd on Windows to bypass script execution restrictions
+
     pnpm_cmd = "pnpm.cmd" if os.name == "nt" else "pnpm"
     frontend_thread = threading.Thread(
         target=run_service,
         args=("Frontend UI", [pnpm_cmd, "dev"], FRONTEND_DIR),
-        daemon=True
+        daemon=True,
     )
-    
+
     sdk_thread.start()
-    time.sleep(2)  # Give SDK time to launch
+    time.sleep(2)
     backend_thread.start()
-    time.sleep(2)  # Give Backend time to launch
+    time.sleep(2)
     frontend_thread.start()
-    
-    # Keep the main process running and handle shutdown
+
     try:
         while True:
             time.sleep(1)
@@ -81,12 +92,14 @@ def main():
         print("Terminating all services...")
         print("==========================================================")
         for proc in processes:
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
         print("All processes stopped successfully.")
+
 
 if __name__ == "__main__":
     main()

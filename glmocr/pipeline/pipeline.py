@@ -167,6 +167,7 @@ class Pipeline:
             daemon=True,
         )
 
+        self.ocr_client._pipeline_state = state
         t1.start()
         t2.start()
         t3.start()
@@ -292,17 +293,27 @@ class Pipeline:
     ) -> PipelineResult:
         """No image URLs — forward the request directly to the OCR API."""
         request_data = self.page_loader.build_request(request_data)
+        start_time = time.time()
         response, status_code = self.ocr_client.process(request_data)
+        ocr_ms = (time.time() - start_time) * 1000
         if status_code != 200:
             raise Exception(
                 f"OCR request failed: {response}, status_code: {status_code}"
             )
         content = extract_ocr_content(response)
+        post_start = time.time()
         json_result, markdown_result = self.result_formatter.format_ocr_result(content)
+        post_ms = (time.time() - post_start) * 1000
         return PipelineResult(
             json_result=json_result,
             markdown_result=markdown_result,
             original_images=[],
+            timings_ms={
+                "page_loading_ms": 0.0,
+                "layout_detection_ms": 0.0,
+                "ocr_inference_ms": ocr_ms,
+                "postprocessing_ms": post_ms,
+            },
         )
 
     def _emit_results(
@@ -358,10 +369,13 @@ class Pipeline:
 
             cropped_images = state.collect_cropped_images_for_unit(page_indices)
             raw_json = self._build_raw_json(grouped)
+            post_start = time.time()
             json_u, md_u, image_files = self.result_formatter.process(
                 grouped,
                 cropped_images=cropped_images or None,
             )
+            post_ms = (time.time() - post_start) * 1000
+            state.record_unit_timing(u, "postprocessing_ms", post_ms)
 
             vis_images = {}
             for pi in page_indices:
@@ -371,6 +385,7 @@ class Pipeline:
 
             state.release_unit_data(page_indices)
 
+            timings_ms = state.get_unit_timings(u)
             result = PipelineResult(
                 json_result=json_u,
                 markdown_result=md_u,
@@ -378,6 +393,7 @@ class Pipeline:
                 image_files=image_files or None,
                 raw_json_result=raw_json,
                 layout_vis_images=vis_images or None,
+                timings_ms=timings_ms,
             )
             built.add(u)
             if preserve_order:

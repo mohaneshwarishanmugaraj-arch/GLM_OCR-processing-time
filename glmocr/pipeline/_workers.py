@@ -23,6 +23,7 @@ region_queue::
 from __future__ import annotations
 
 import queue
+import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -76,8 +77,23 @@ def data_loading_worker(
     unit_indices_list: List[int] = []
     prev_unit_idx: Optional[int] = None
     sent_unit_done: set = set()
+
+    def record_page_loading(unit_idx: int, duration_ms: float) -> None:
+        state.record_unit_timing(unit_idx, "page_loading_ms", duration_ms)
+
     try:
-        for page, unit_idx in page_loader.iter_pages_with_unit_indices(image_sources):
+        page_iterator = iter(
+            page_loader.iter_pages_with_unit_indices(
+                image_sources,
+                page_timing_callback=record_page_loading,
+            )
+        )
+        while True:
+            try:
+                page, unit_idx = next(page_iterator)
+            except StopIteration:
+                break
+
             if state.is_shutdown:
                 break
 
@@ -179,6 +195,22 @@ def layout_worker(
 
             if identifier == IDENTIFIER_IMAGE:
                 unit_idx = msg["unit_idx"]
+                if batch_images and batch_unit_indices[-1] != unit_idx:
+                    _flush_layout_batch(
+                        state,
+                        layout_detector,
+                        batch_images,
+                        batch_page_indices,
+                        batch_unit_indices,
+                        save_visualization,
+                        global_start_idx,
+                        use_polygon=use_polygon,
+                    )
+                    global_start_idx += len(batch_page_indices)
+                    for pi in batch_page_indices:
+                        state.images_dict.pop(pi, None)
+                    batch_images, batch_page_indices, batch_unit_indices = [], [], []
+
                 batch_images.append(msg["image"])
                 batch_page_indices.append(msg["page_idx"])
                 batch_unit_indices.append(unit_idx)
@@ -192,6 +224,7 @@ def layout_worker(
                         layout_detector,
                         batch_images,
                         batch_page_indices,
+                        batch_unit_indices,
                         save_visualization,
                         global_start_idx,
                         use_polygon=use_polygon,
@@ -209,6 +242,7 @@ def layout_worker(
                         layout_detector,
                         batch_images,
                         batch_page_indices,
+                        batch_unit_indices,
                         save_visualization,
                         global_start_idx,
                         use_polygon=use_polygon,
@@ -237,6 +271,8 @@ def layout_worker(
                         layout_detector,
                         batch_images,
                         batch_page_indices,
+                        batch_unit_indices,
+                        batch_unit_indices,
                         save_visualization,
                         global_start_idx,
                         use_polygon=use_polygon,
@@ -256,18 +292,26 @@ def _flush_layout_batch(
     layout_detector: "BaseLayoutDetector",
     batch_images: List[Any],
     batch_page_indices: List[int],
+    batch_unit_indices: List[int],
     save_visualization: bool,
     global_start_idx: int,
     use_polygon: bool = False,
 ) -> None:
     """Run layout detection on one batch and enqueue the resulting regions."""
     try:
+        t0 = time.time()
         layout_results, vis_images = layout_detector.process(
             batch_images,
             save_visualization=save_visualization,
             global_start_idx=global_start_idx,
             use_polygon=use_polygon,
         )
+        elapsed_ms = (time.time() - t0) * 1000
+        unique_unit_indices = sorted(set(batch_unit_indices))
+        if len(unique_unit_indices) == 1:
+            state.record_unit_timing(
+                unique_unit_indices[0], "layout_detection_ms", elapsed_ms
+            )
         if vis_images:
             state.layout_vis_images.update(vis_images)
     except Exception as e:
@@ -280,8 +324,8 @@ def _flush_layout_batch(
             state.layout_results_dict[page_idx] = []
         return
 
-    for page_idx, image, layout_result in zip(
-        batch_page_indices, batch_images, layout_results
+    for page_idx, unit_idx, image, layout_result in zip(
+        batch_page_indices, batch_unit_indices, batch_images, layout_results
     ):
         state.layout_results_dict[page_idx] = layout_result
         for region in layout_result:
@@ -303,6 +347,7 @@ def _flush_layout_batch(
                 {
                     "identifier": IDENTIFIER_REGION,
                     "page_idx": page_idx,
+                    "unit_idx": unit_idx,
                     "cropped_image": cropped,
                     "region": region,
                 },
@@ -366,7 +411,13 @@ def recognition_worker(
                         msg["region"]["task_type"],
                     )
                     del msg["cropped_image"]
-                    future = executor.submit(ocr_client.process, req)
+                    future = executor.submit(
+                        _invoke_ocr_with_timing,
+                        state,
+                        ocr_client,
+                        req,
+                        msg["unit_idx"],
+                    )
                     futures[future] = msg
 
             elif identifier == IDENTIFIER_DONE:
@@ -402,6 +453,24 @@ def _collect_done_futures(
     for f in list(futures):
         if f.done():
             _handle_future_result(f, futures, state)
+
+
+def _invoke_ocr_with_timing(
+    state: PipelineState,
+    ocr_client: Any,
+    request_data: Dict[str, Any],
+    unit_idx: int,
+):
+    """Execute OCR and record the true inference latency for a single unit."""
+    start_time = time.time()
+    try:
+        response, status_code = ocr_client.process(request_data)
+        elapsed_ms = (time.time() - start_time) * 1000
+        if unit_idx is not None:
+            state.record_unit_timing(unit_idx, "ocr_inference_ms", elapsed_ms)
+        return response, status_code
+    finally:
+        pass
 
 
 def _handle_future_result(
