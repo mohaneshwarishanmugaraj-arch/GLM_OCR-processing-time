@@ -113,6 +113,7 @@ async def _call_ocr_service(
     custom_url = config.get("custom_url", None)
     cli = LayoutAndOCRClient()
     pages_result = []
+    total_timings_ms: Dict[str, float] = {}
     page_width = page_size.get("width")
     page_height = page_size.get("height")
     block_idx = 1
@@ -120,6 +121,10 @@ async def _call_ocr_service(
     for i, image_file in enumerate(image_files):
         page_num = i + 1
         result = await cli.process_single_image(image_file, custom_url=custom_url)
+        for key, duration_ms in cli.last_timings_ms.items():
+            total_timings_ms[key] = total_timings_ms.get(key, 0.0) + float(
+                duration_ms or 0.0
+            )
         if progress_callback:
             progress = (i / page_count) * 100
             await progress_callback(
@@ -179,6 +184,7 @@ async def _call_ocr_service(
         "images_dir": images_dir,
         "ocr_result_file": f"{ocr_result_file}",
         "ref_image_paths": ref_image_paths,
+        "timings_ms": total_timings_ms,
     }
 
     try:

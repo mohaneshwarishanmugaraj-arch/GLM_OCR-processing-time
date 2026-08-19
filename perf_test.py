@@ -148,7 +148,7 @@ def run_performance_test():
             # We don't timeout on upload to allow huge files (e.g. 500MB)
             resp = requests.post(UPLOAD_URL, files=files, data=data)
             status_code = resp.status_code
-            if resp.status_code == 200:
+            if resp.status_code in (200, 201):
                 resp_data = resp.json()
                 if resp_data.get("success"):
                     task_id = resp_data["data"]["task_id"]
@@ -194,6 +194,7 @@ def run_performance_test():
 
         # 6. Output Processing
         output_process_start = time.perf_counter()
+        output_process_time = time.perf_counter() - output_process_start
         end_to_end = time.perf_counter() - file_start_time
 
         csv_writer.writerow(
@@ -209,7 +210,7 @@ def run_performance_test():
                 prep_time,
                 exec_time,
                 resp_process_time,
-                0.0,
+                output_process_time,
                 internal_timings.get("page_loading_ms", 0.0) / 1000.0,
                 internal_timings.get("layout_detection_ms", 0.0) / 1000.0,
                 internal_timings.get("ocr_inference_ms", 0.0) / 1000.0,
@@ -218,9 +219,6 @@ def run_performance_test():
             ]
         )
         csv_file.flush()
-
-        output_process_time = time.perf_counter() - output_process_start
-        end_to_end = time.perf_counter() - file_start_time
 
         print(f"  {'SUCCESS' if success else 'FAILED'} in {format_ms(end_to_end)}")
         if not success:
@@ -306,9 +304,18 @@ def run_performance_test():
     report.append(f"Input discovery: {format_ms(medians['discovery'])}")
     report.append(f"File loading: {format_ms(medians['loading'])}")
     report.append(f"Request preparation: {format_ms(medians['preparation'])}")
-    report.append(f"Request execution: {format_ms(medians['execution'])}")
-    report.append(f"Response processing: {format_ms(medians['response'])}")
-    report.append(f"Output processing: {format_ms(medians['output'])}")
+    internal_stage_names = {
+        "page_loading_ms": "Page loading",
+        "layout_detection_ms": "Layout detection",
+        "ocr_inference_ms": "VLM inference",
+        "postprocessing_ms": "Post-processing/Markdown generation",
+    }
+    for timing_key, label in internal_stage_names.items():
+        values = [
+            float(result["internal_timings"].get(timing_key, 0.0) or 0.0) / 1000
+            for result in results
+        ]
+        report.append(f"{label}: {format_ms(calculate_percentile(values, 50))}")
     report.append(f"End-to-end: {format_ms(medians['e2e'])}")
     report.append("")
     report.append("THROUGHPUT")

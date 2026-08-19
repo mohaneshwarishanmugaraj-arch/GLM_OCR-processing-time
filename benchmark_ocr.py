@@ -1,4 +1,5 @@
 import sys
+import time
 import json
 from pathlib import Path
 import requests
@@ -177,8 +178,9 @@ def parse_pdf_with_benchmarks(pdf_path: Path):
     file_uri = f"file:///{pdf_path.absolute().as_posix()}"
     payload = {"images": [file_uri]}
 
+    request_started = time.time()
     try:
-        response = requests.post(SDK_SERVER_URL, json=payload, timeout=60)
+        response = requests.post(SDK_SERVER_URL, json=payload, timeout=600)
         response.raise_for_status()
         resp_data = response.json()
     except Exception as e:
@@ -186,8 +188,9 @@ def parse_pdf_with_benchmarks(pdf_path: Path):
         print("Make sure the SDK Flask server is running at http://localhost:5002")
         return None
 
+    request_duration = time.time() - request_started
     checkpoints = normalize_benchmark_timings(resp_data.get("timings_ms", {}))
-    total_time = sum(c["duration"] for c in checkpoints)
+    total_time = request_duration
     print(f"Successfully parsed '{pdf_path.name}' in {total_time:.2f}s!")
 
     # Extract results

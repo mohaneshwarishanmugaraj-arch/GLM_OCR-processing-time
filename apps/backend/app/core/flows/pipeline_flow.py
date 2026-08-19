@@ -5,6 +5,7 @@ Pipeline处理流程实现
 """
 
 import os
+import json
 from typing import Dict, Any
 from pathlib import Path
 
@@ -58,29 +59,26 @@ class PipelineFlow(TaskProcessingFlow):
         self.context.metadata = pdf_result.get("metadata") or {}
 
         # 步骤2: 版面分析和OCR处理 (20-85%)
-        t2_start = time.time()
         ocr_results = await self._step_layout_and_ocr(pdf_result)
-        t2_end = time.time()
-        t_layout_ocr = t2_end - t2_start
 
         self.context.set("ocr_results", ocr_results)
 
-        # Calculate step timings
-        timings = [
-            {"step": 1, "checkpoint": "PDF loading", "duration": 0.015, "description": "Loaded PDF document structure"},
-            {"step": 2, "checkpoint": "PDF -> page/image conversion", "duration": t_pdf_to_image, "description": f"Rendered {pdf_result.get('page_count', 0)} pages to images"},
-            {"step": 3, "checkpoint": "Layout model initialization", "duration": 0.45, "description": "Initialized layout detection engine"},
-            {"step": 4, "checkpoint": "Layout detection", "duration": t_layout_ocr * 0.25, "description": "Analyzed page block hierarchies"},
-            {"step": 5, "checkpoint": "Region/crop preparation", "duration": t_layout_ocr * 0.05, "description": "Prepared crops for VLM inputs"},
-            {"step": 6, "checkpoint": "GLM-OCR model inference", "duration": t_layout_ocr * 0.70, "description": "Executed VLM OCR region parsing"},
-            {"step": 7, "checkpoint": "Recognition of all regions", "duration": 0.05, "description": "Merged markdown and tables successfully"}
-        ]
-
-        self.context.metadata["timings"] = timings
+        internal_timings = dict(ocr_results.get("timings_ms", {}) or {})
+        internal_timings["page_loading_ms"] = t_pdf_to_image * 1000
+        ocr_results["timings_ms"] = internal_timings
+        self.context.metadata["timings"] = internal_timings
         self.context.metadata["total_time"] = time.time() - t_start
 
         # 步骤3: 结果合并 (85-100%)
         final_result = await self._step_result_merge(ocr_results)
+        self.context.metadata["total_time"] = time.time() - t_start
+        final_result["metadata"]["total_time"] = self.context.metadata["total_time"]
+
+        with open(final_result["json_output_path"], "r", encoding="utf-8") as f:
+            merged_data = json.load(f)
+        merged_data["metadata"] = final_result["metadata"]
+        with open(final_result["json_output_path"], "w", encoding="utf-8") as f:
+            json.dump(merged_data, f, ensure_ascii=False, indent=2)
 
         logger.info(f"[{self.context.task_id}] Pipeline flow completed")
 

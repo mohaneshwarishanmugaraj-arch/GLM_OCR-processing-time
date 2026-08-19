@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional, Callable
 from pathlib import Path
 import json
 import os
+import time
 
 from app.core.flows.base import ProcessingContext
 from app.utils.logger import logger
@@ -55,11 +56,28 @@ async def merge_results(
             logger.error(
                 f"[{task_id}] Failed to read OCR result from {result_path}: {e}"
             )
+        ocr_results["timings_ms"] = dict(
+            context.metadata.get("timings", ocr_results.get("timings_ms", {}))
+            or {}
+        )
 
         # 根据输出格式进行合并
+        postprocessing_started = time.time()
         md_output_path, json_output_path = await _merge_to_markdown(
             context, ocr_results, output_dir, progress_callback
         )
+        postprocessing_ms = (time.time() - postprocessing_started) * 1000
+        timings = {
+            **ocr_results.get("timings_ms", {}),
+            "postprocessing_ms": postprocessing_ms,
+        }
+        context.metadata["timings"] = timings
+
+        with open(json_output_path, "r", encoding="utf-8") as f:
+            merged_data = json.load(f)
+        merged_data["metadata"] = context.metadata
+        with open(json_output_path, "w", encoding="utf-8") as f:
+            json.dump(merged_data, f, ensure_ascii=False, indent=2)
 
         if progress_callback:
             await progress_callback(100.0, "Merge completed")
@@ -71,6 +89,7 @@ async def merge_results(
             "metadata": {
                 "format": output_format,
                 "total_pages": len(ocr_results.get("pages", [])),
+                "timings": timings,
             },
         }
 

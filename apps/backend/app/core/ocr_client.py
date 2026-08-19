@@ -71,7 +71,7 @@ class LayoutAndOCRClient:
     # 默认的layout和OCR提示词
     DEFAULT_PROMPT = "<|PIPELINE_DOCUMENT_RECOGNITION|>"
 
-    def __init__(self, service_url: Optional[str] = None, timeout: float = 120.0):
+    def __init__(self, service_url: Optional[str] = None, timeout: float = 600.0):
         """初始化LayoutAndOCR客户端。
 
         Args:
@@ -85,6 +85,7 @@ class LayoutAndOCRClient:
 
         self.timeout = timeout
         self.async_headers = {"Content-Type": "application/json"}
+        self.last_timings_ms: Dict[str, float] = {}
 
     def _encode_image_to_base64(self, image_path: str) -> str:
         """将图片文件编码为base64格式。
@@ -201,6 +202,7 @@ class LayoutAndOCRClient:
 
                 if response.status_code == 200:
                     result = response.json()
+                    self.last_timings_ms = dict(result.get("timings_ms", {}) or {})
 
                     # 提取内容
                     if "json_result" in result and len(result["json_result"]) > 0:
