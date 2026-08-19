@@ -3,6 +3,7 @@ import time
 import json
 import csv
 import math
+import os
 from pathlib import Path
 import requests
 
@@ -16,7 +17,7 @@ OUTPUT_DIR = Path("output/results")
 CONFIG_FILE = Path("perf_config.json")
 
 # Endpoints
-API_BASE_URL = "http://localhost:8000/api/v1"
+API_BASE_URL = os.getenv("GLMOCR_TASK_API_URL", "http://localhost:8000/api/v1")
 UPLOAD_URL = f"{API_BASE_URL}/tasks/upload"
 STATUS_URL = f"{API_BASE_URL}/tasks/{{}}"
 

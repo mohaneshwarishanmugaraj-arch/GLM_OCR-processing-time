@@ -1,6 +1,7 @@
 import sys
 import time
 import json
+import os
 from pathlib import Path
 import requests
 
@@ -14,7 +15,8 @@ INPUT_DIR = Path(r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR\apps\input")
 OUTPUT_DIR = Path(
     r"c:\Users\VINOTHINI B\OneDrive\Desktop\GLM - OCR\apps\output_benchmarks"
 )
-SDK_SERVER_URL = "http://localhost:5002/glmocr/parse"
+SDK_SERVER_URL = os.getenv("GLMOCR_SDK_URL", "http://localhost:5002/glmocr/parse")
+SDK_HEALTH_URL = os.getenv("GLMOCR_SDK_HEALTH_URL", "http://localhost:5002/health")
 
 BENCHMARK_CHECKPOINTS = [
     "Page loading",
@@ -158,6 +160,17 @@ def parse_pdf_with_benchmarks(pdf_path: Path):
     print("==============================================")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    try:
+        health_response = requests.get(SDK_HEALTH_URL, timeout=5)
+        health_response.raise_for_status()
+    except requests.RequestException as exc:
+        print(
+            f"Error: GLM-OCR SDK is unavailable at {SDK_SERVER_URL}. "
+            "Start it with 'python -m glmocr.server' or set GLMOCR_SDK_URL."
+        )
+        print(f"Health check failed: {exc}")
+        return None
 
     print("Reading PDF metadata for reporting...")
     num_pages = 0
